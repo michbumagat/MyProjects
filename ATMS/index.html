@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>ATM Bubble Map – full detail</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body{margin:0;font-family:system-ui,sans-serif}
+    #map{width:100vw;height:100vh}
+    .cluster-icon{
+      background:#0066cc;color:#fff;border-radius:50%;
+      text-align:center;line-height:32px;font-weight:bold;
+      border:2px solid #fff;box-shadow:0 0 3px #0004;
+    }
+    /* prettier pop-up */
+    .atm-popup b{display:inline-block;width:140px;}
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/supercluster@8/dist/supercluster.min.js"></script>
+<script>
+/* 1. base map */
+const map = L.map('map').setView([45.4,-75.7],4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+/* 2. load & index points */
+fetch('atms.geojson')
+  .then(r=>r.json())
+  .then(geojson=>{
+      const index = supercluster({
+        radius:60,maxZoom:16,
+        reduce:acc=>acc.count++,map:()=>({count:1})
+      });
+      index.load(geojson.features);
+
+      const layer = L.layerGroup().addTo(map);
+
+      /* helper: turn ALL properties into HTML */
+      function propsHtml(props){
+        return Object.entries(props)
+          .map(([k,v])=>`<b>${k}:</b> ${v??''}`)
+          .join('<br>');
+      }
+
+      function update(){
+        layer.clearLayers();
+        const b=map.getBounds(),z=Math.floor(map.getZoom());
+        const clusters=index.getClusters([b.getWest(),b.getSouth(),b.getEast(),b.getNorth()],z);
+
+        clusters.forEach(c=>{
+          if(c.properties.cluster){
+            const count=c.properties.point_count;
+            const size=30+1.2*Math.sqrt(count);
+            const icn=L.divIcon({
+              html:`<div class="cluster-icon" style="width:${size}px;height:${size}px;line-height:${size}px">${count}</div>`,
+              className:''
+            });
+            const m=L.marker([c.geometry.coordinates[1],c.geometry.coordinates[0]],{icon:icn});
+            m.on('click',()=>{
+              const leaves=index.getLeaves(c.properties.cluster_id,Infinity);
+              map.fitBounds(L.geoJSON({type:'FeatureCollection',features:leaves}).getBounds());
+            });
+            m.bindTooltip(`${count} ATMs`,{direction:'top',offset:[0,-10]});
+            layer.addLayer(m);
+          }else{
+            // single ATM
+            const p=c.properties;
+            const m=L.circleMarker([c.geometry.coordinates[1],c.geometry.coordinates[0]],{
+              radius:6,color:'#0066cc',fillOpacity:0.9
+            });
+            m.bindPopup(`<div class="atm-popup">${propsHtml(p)}</div>`,{maxWidth:350});
+            m.bindTooltip(`${p.name??p.address??'ATM'}`,{direction:'top'});
+            layer.addLayer(m);
+          }
+        });
+      }
+
+      update(); map.on('moveend zoomend',update);
+  })
+  .catch(console.error);
+</script>
+</body>
+</html>
