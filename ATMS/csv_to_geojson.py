@@ -52,7 +52,7 @@ def main():
     df[['latitude', 'longitude']] = pd.DataFrame(coords, columns=['lat', 'lon'])
 
     # drop failures
-    df = df.dropna(subset=['latitude', 'longitude'])
+    # df = df.dropna(subset=['latitude', 'longitude'])
     print(f'\nSuccessfully geocoded {len(df)} / {len(coords)} rows')
 
     # rename standard address fields for the map (lower-case aliases)
